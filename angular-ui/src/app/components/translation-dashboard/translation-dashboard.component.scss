@@ -202,6 +202,26 @@
       line-height: 1;
     }
 
+    .changes-icon {
+      color: #2196F3; /* Blue color for changes indicator */
+      margin-left: 8px;
+      vertical-align: middle;
+      line-height: 1;
+    }
+
+    .changes-info {
+      font-style: italic;
+      font-weight: lighter;
+      margin-left: 1rem;
+      color: #2196F3; /* Blue color to match the changes icon */
+    }
+
+    .last-pulled-hint, .created-hint {
+      font-size: 0.9em;
+      color: #666;
+      margin-left: 0.5rem;
+    }
+
     .processing-progress-bar {
       position: absolute;
       bottom: 0;

@@ -36,7 +36,12 @@
                         <mat-icon *ngIf="set.status === 'FAILED'" 
                                 matTooltip="Status: {{ set.status }}"
                                 class="processing-icon">error</mat-icon>
+                        <mat-icon *ngIf="set.status === 'READY' && set.changedSinceCreatedOrLastPulled > 0" 
+                                 matTooltip="{{ set.changedSinceCreatedOrLastPulled }} changes since {{ set.lastPulled ? 'last pull' : 'created' }}"
+                                 class="changes-icon">update</mat-icon>
                         <span *ngIf="set.size" class="artifact-info">{{ set.size }} concepts</span>
+                        <span *ngIf="set.status === 'READY' && set.changedSinceCreatedOrLastPulled > 0" 
+                              class="changes-info">{{ set.changedSinceCreatedOrLastPulled }} changes</span>
                         <mat-progress-bar *ngIf="set.status === 'PROCESSING' && set.percentageProcessed !== undefined"
                                          [value]="set.percentageProcessed"
                                          class="processing-progress-bar"></mat-progress-bar>
@@ -105,6 +110,27 @@
                             <mat-spinner *ngIf="loadingLabelSetDetails" [diameter]="16" class="inline-spinner"></mat-spinner>
                             <span *ngIf="!loadingLabelSetDetails" class="details-field-value">
                                 {{ selectedLabelSet.translated }} ({{ (selectedLabelSet.translated / selectedLabelSet.size * 100) | number:'1.0-1' }}%)
+                            </span>
+                        </div>
+                    </div>
+                    <div class="component-row" *ngIf="selectedLabelSet.size && selectedLabelSet.created">
+                        <div class="component-col align-right">
+                            <span class="details-field-name">Changes Since {{ selectedLabelSet.lastPulled ? 'Last Pull' : 'Created' }}</span>
+                        </div>
+                        <div class="component-col">
+                            <mat-spinner *ngIf="loadingLabelSetDetails" [diameter]="16" class="inline-spinner"></mat-spinner>
+                            <span *ngIf="!loadingLabelSetDetails" class="details-field-value">
+                                {{ selectedLabelSet.changedSinceCreatedOrLastPulled || 0 }}
+                                <span *ngIf="selectedLabelSet.lastPulled" 
+                                      matTooltip="Last pulled: {{ selectedLabelSet.lastPulled | date:'medium' }}"
+                                      class="last-pulled-hint">
+                                    ({{ selectedLabelSet.lastPulled | date:'short' }})
+                                </span>
+                                <span *ngIf="!selectedLabelSet.lastPulled && selectedLabelSet.created" 
+                                      matTooltip="Created: {{ selectedLabelSet.created | date:'medium' }}"
+                                      class="created-hint">
+                                    ({{ selectedLabelSet.created | date:'short' }})
+                                </span>
                             </span>
                         </div>
                     </div>
