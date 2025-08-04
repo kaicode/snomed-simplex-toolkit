@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.*;
 
 @Service
@@ -104,8 +105,19 @@ public class WeblateSetService {
 		String webUrl = weblateClientFactory.getApiUrl().replaceAll("/api/?$", "");
 		list.stream()
 			.filter(set -> set.getStatus() == TranslationSetStatus.READY)
-			.forEach(set -> set.setWeblateLabelUrl("%s/translate/common/snomedct/%s/?q=label:\"%s\""
-				.formatted(webUrl, set.getLanguageCodeWithRefsetId(), set.getCompositeLabel())));
+			.forEach(set -> {
+				set.setWeblateLabelUrl("%s/translate/common/snomedct/%s/?q=label:\"%s\""
+					.formatted(webUrl, set.getLanguageCodeWithRefsetId(), set.getCompositeLabel()));
+				
+				// Set changed count for ready translation sets
+				try {
+					int changedSince = getChangedSinceCount(set);
+					set.setChangedSinceCreatedOrLastPulled(changedSince);
+				} catch (ServiceExceptionWithStatusCode e) {
+					logger.warn("Failed to get changed count for translation set {}: {}", set.getCompositeLabel(), e.getMessage());
+					set.setChangedSinceCreatedOrLastPulled(0);
+				}
+			});
 		return list;
 	}
 
@@ -165,6 +177,24 @@ public class WeblateSetService {
 			.languageCode(translationSet.getLanguageCodeWithRefsetId())
 			.compositeLabel(translationSet.getCompositeLabel())
 			.state(state)
+			.pageSize(1));
+		return unitPage.count();
+	}
+
+	public int getChangedSinceCount(WeblateTranslationSet translationSet) throws ServiceExceptionWithStatusCode {
+		// Use the more recent of created or lastPulled as the baseline
+		Instant sinceDate = translationSet.getLastPulled() != null ? 
+			translationSet.getLastPulled() : translationSet.getCreated();
+		
+		if (sinceDate == null) {
+			return 0; // No baseline date available
+		}
+
+		WeblateClient weblateClient = weblateClientFactory.getClient();
+		WeblatePage<WeblateUnit> unitPage = weblateClient.getUnitPage(UnitQueryBuilder.of(WeblateClient.COMMON_PROJECT, WeblateClient.SNOMEDCT_COMPONENT)
+			.languageCode(translationSet.getLanguageCodeWithRefsetId())
+			.compositeLabel(translationSet.getCompositeLabel())
+			.changedSince(sinceDate)
 			.pageSize(1));
 		return unitPage.count();
 	}
@@ -241,7 +271,13 @@ public class WeblateSetService {
 		}
 		try (FileInputStream fileInputStream = new FileInputStream(subsetFile)) {
 			contentJob.addUpload(fileInputStream, "weblate-automatic-download.csv");
-			return translationService.uploadTranslationAsWeblateCSV(true, contentJob);
+			ChangeSummary result = translationService.uploadTranslationAsWeblateCSV(true, contentJob);
+			
+			// Update the last pulled timestamp after successful pull
+			translationSet.setLastPulled(Instant.now());
+			weblateSetRepository.save(translationSet);
+			
+			return result;
 		} catch (IOException e) {
 			throw new ServiceExceptionWithStatusCode("Translation upload step failed.", HttpStatus.INTERNAL_SERVER_ERROR, e);
 		} finally {

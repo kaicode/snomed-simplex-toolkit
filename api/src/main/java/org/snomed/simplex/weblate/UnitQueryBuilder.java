@@ -1,5 +1,8 @@
 package org.snomed.simplex.weblate;
 
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+
 /**
  * Builder for constructing Weblate unit query parameters.
  */
@@ -9,6 +12,7 @@ public class UnitQueryBuilder {
     private String languageCode = "en";
     private String compositeLabel;
     private String state;
+    private Instant changedSince;
     private int pageSize = 100;
     private boolean fastestSort = true;
 
@@ -42,6 +46,11 @@ public class UnitQueryBuilder {
         return this;
     }
 
+    public UnitQueryBuilder changedSince(Instant changedSince) {
+        this.changedSince = changedSince;
+        return this;
+    }
+
     public String build() {
         StringBuilder query = new StringBuilder()
                 .append("project").append(":").append(projectSlug)
@@ -56,6 +65,12 @@ public class UnitQueryBuilder {
 
         if (state != null) {
             query.append(" AND state:").append(state);
+        }
+
+        if (changedSince != null) {
+            // Format the timestamp for Weblate API - use ISO 8601 format
+            String formattedTime = DateTimeFormatter.ISO_INSTANT.format(changedSince);
+            query.append(" AND changed:>").append(formattedTime);
         }
 
         return "/units/?q=%s&page_size=%s%s&format=json".formatted(
