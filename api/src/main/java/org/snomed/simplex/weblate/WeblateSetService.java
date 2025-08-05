@@ -13,6 +13,7 @@ import org.snomed.simplex.service.SupportRegister;
 import org.snomed.simplex.service.TranslationService;
 import org.snomed.simplex.service.job.ChangeSummary;
 import org.snomed.simplex.service.job.ContentJob;
+import org.snomed.simplex.util.CsvStreamReader;
 import org.snomed.simplex.util.FileUtils;
 import org.snomed.simplex.util.TimerUtil;
 import org.snomed.simplex.weblate.domain.*;
@@ -26,6 +27,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -183,15 +187,23 @@ public class WeblateSetService {
 					"please start language initialisation job or wait for it to finish.", HttpStatus.CONFLICT);
 		}
 
-		// Parse CSV and validate content
-		List<CsvTranslationRow> translationRows;
+		// Save CSV to temporary file and validate content
+		String tempFilePath;
+		int rowCount;
 		try {
-			translationRows = parseCsvTranslations(csvInputStream, conceptCodeColumn, translatedTermColumn, commentColumn);
+			tempFilePath = saveCsvToTempFile(csvInputStream);
+			rowCount = validateCsvFile(tempFilePath, conceptCodeColumn, translatedTermColumn, commentColumn);
 		} catch (IOException e) {
-			throw new ServiceExceptionWithStatusCode("Failed to parse CSV file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+			throw new ServiceExceptionWithStatusCode("Failed to process CSV file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
 		}
 
-		if (translationRows.isEmpty()) {
+		if (rowCount == 0) {
+			// Clean up temp file
+			try {
+				Files.deleteIfExists(Path.of(tempFilePath));
+			} catch (IOException e) {
+				logger.warn("Failed to delete temporary CSV file: {}", tempFilePath, e);
+			}
 			throw new ServiceExceptionWithStatusCode("CSV file contains no valid translation rows.", HttpStatus.BAD_REQUEST);
 		}
 
@@ -201,11 +213,14 @@ public class WeblateSetService {
 		translationSet.setLanguageCode(languageCode);
 		translationSet.setStatus(TranslationSetStatus.INITIALISING);
 
-		// Store the CSV translations for later processing
-		translationSet.setCsvTranslations(translationRows);
+		// Store the temporary file path and column mappings for later processing
+		translationSet.setCsvTempFilePath(tempFilePath);
+		translationSet.setConceptCodeColumn(conceptCodeColumn);
+		translationSet.setTranslatedTermColumn(translatedTermColumn);
+		translationSet.setCommentColumn(commentColumn);
 
-		logger.info("Queueing Weblate Translation Set for CSV creation {}/{}/{} with {} translations", 
-			codesystemShortName, refsetId, label, translationRows.size());
+		logger.info("Queueing Weblate Translation Set for CSV creation {}/{}/{} with {} translations from temp file {}", 
+			codesystemShortName, refsetId, label, rowCount, tempFilePath);
 		
 		weblateSetRepository.save(translationSet);
 		String username = SecurityUtil.getUsername();
@@ -219,91 +234,33 @@ public class WeblateSetService {
 		return translationSet;
 	}
 
-	private List<CsvTranslationRow> parseCsvTranslations(InputStream csvInputStream, String conceptCodeColumn, 
-			String translatedTermColumn, String commentColumn) throws IOException {
+	private String saveCsvToTempFile(InputStream csvInputStream) throws IOException {
+		// Create temporary file
+		Path tempFile = Files.createTempFile("weblate-csv-", ".csv");
 		
-		List<CsvTranslationRow> translations = new ArrayList<>();
-		try (BufferedReader reader = new BufferedReader(new InputStreamReader(csvInputStream, StandardCharsets.UTF_8))) {
-			String headerLine = reader.readLine();
-			if (headerLine == null) {
-				throw new IOException("CSV file is empty");
-			}
-
-			// Parse header row
-			List<String> headers = parseCsvLine(headerLine);
-			int conceptCodeIndex = headers.indexOf(conceptCodeColumn);
-			int translatedTermIndex = headers.indexOf(translatedTermColumn);
-			int commentIndex = commentColumn != null ? headers.indexOf(commentColumn) : -1;
-
-			if (conceptCodeIndex == -1) {
-				throw new IOException("Concept code column '" + conceptCodeColumn + "' not found in CSV headers");
-			}
-			if (translatedTermIndex == -1) {
-				throw new IOException("Translated term column '" + translatedTermColumn + "' not found in CSV headers");
-			}
-
-			// Parse data rows
-			String line;
-			int rowNumber = 1;
-			while ((line = reader.readLine()) != null) {
-				rowNumber++;
-				if (line.trim().isEmpty()) {
-					continue; // Skip empty lines
-				}
-
-				try {
-					List<String> values = parseCsvLine(line);
-					if (values.size() <= Math.max(conceptCodeIndex, translatedTermIndex)) {
-						logger.warn("Skipping row {} with insufficient columns", rowNumber);
-						continue;
-					}
-
-					String conceptCode = values.get(conceptCodeIndex).trim();
-					String translatedTerm = values.get(translatedTermIndex).trim();
-					String comment = commentIndex >= 0 && commentIndex < values.size() ? 
-						values.get(commentIndex).trim() : null;
-
-					if (conceptCode.isEmpty() || translatedTerm.isEmpty()) {
-						logger.warn("Skipping row {} with empty concept code or translated term", rowNumber);
-						continue;
-					}
-
-					translations.add(new CsvTranslationRow(conceptCode, translatedTerm, comment));
-				} catch (Exception e) {
-					logger.warn("Error parsing row {}: {}", rowNumber, e.getMessage());
-				}
-			}
+		// Copy input stream to temporary file
+		try (InputStream input = csvInputStream) {
+			Files.copy(input, tempFile, StandardCopyOption.REPLACE_EXISTING);
 		}
-
-		return translations;
+		
+		logger.info("Saved CSV to temporary file: {}", tempFile.toString());
+		return tempFile.toString();
 	}
 
-	private List<String> parseCsvLine(String line) {
-		List<String> result = new ArrayList<>();
-		StringBuilder current = new StringBuilder();
-		boolean inQuotes = false;
+	private int validateCsvFile(String tempFilePath, String conceptCodeColumn, String translatedTermColumn, String commentColumn) 
+			throws IOException {
 		
-		for (int i = 0; i < line.length(); i++) {
-			char c = line.charAt(i);
-			
-			if (c == '"') {
-				if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-					// Handle escaped quotes
-					current.append('"');
-					i++; // Skip next quote
-				} else {
-					inQuotes = !inQuotes;
-				}
-			} else if (c == ',' && !inQuotes) {
-				result.add(current.toString());
-				current = new StringBuilder();
-			} else {
-				current.append(c);
+		int validRowCount = 0;
+		
+		try (CsvStreamReader csvReader = new CsvStreamReader(tempFilePath, conceptCodeColumn, translatedTermColumn, commentColumn)) {
+			// Count valid rows by reading through the file
+			while (csvReader.readNext() != null) {
+				validRowCount++;
 			}
 		}
 		
-		result.add(current.toString());
-		return result;
+		logger.info("Validated CSV file {} with {} valid translation rows", tempFilePath, validRowCount);
+		return validRowCount;
 	}
 
 	public WeblatePage<WeblateUnit> getSampleRows(WeblateTranslationSet translationSet) throws ServiceExceptionWithStatusCode {
@@ -456,79 +413,152 @@ public class WeblateSetService {
 	private void doCreateSetFromCsv(WeblateTranslationSet translationSet, WeblateClient weblateClient, 
 			WeblateLabel weblateLabel, TimerUtil timerUtil) throws ServiceExceptionWithStatusCode {
 		
-		List<CsvTranslationRow> csvTranslations = translationSet.getCsvTranslations();
-		if (csvTranslations == null || csvTranslations.isEmpty()) {
-			throw new ServiceExceptionWithStatusCode("No CSV translations found for translation set", HttpStatus.BAD_REQUEST);
+		String tempFilePath = translationSet.getCsvTempFilePath();
+		if (tempFilePath == null || tempFilePath.isEmpty()) {
+			throw new ServiceExceptionWithStatusCode("No CSV temp file path found for translation set", HttpStatus.BAD_REQUEST);
 		}
 
 		String compositeLabel = translationSet.getCompositeLabel();
-		List<String> codes = csvTranslations.stream()
-			.map(CsvTranslationRow::getConceptCode)
-			.collect(Collectors.toList());
 		
-		// Process in batches
-		int done = 0;
-		int total = codes.size();
-		
-		for (int i = 0; i < codes.size(); i += labelBatchSize) {
-			int endIndex = Math.min(i + labelBatchSize, codes.size());
-			List<String> batch = codes.subList(i, endIndex);
-			
-			bulkAddLabelsToBatch(compositeLabel, batch, weblateClient, weblateLabel);
-			timerUtil.checkpoint("Completed CSV batch");
-			done += batch.size();
-			updateProcessingTotal(translationSet, done, total);
-		}
-
-		// Now apply the CSV translations using the existing translation service
 		try {
-			applyCsvTranslations(translationSet, csvTranslations);
+			// First pass: collect all concept codes for label creation
+			List<String> allConceptCodes = new ArrayList<>();
+			try (CsvStreamReader csvReader = new CsvStreamReader(tempFilePath, 
+					translationSet.getConceptCodeColumn(), 
+					translationSet.getTranslatedTermColumn(), 
+					translationSet.getCommentColumn())) {
+				
+				CsvTranslationRow row;
+				while ((row = csvReader.readNext()) != null) {
+					allConceptCodes.add(row.getConceptCode());
+				}
+			}
+
+			// Process concept codes in batches for label creation
+			int done = 0;
+			int total = allConceptCodes.size();
+			
+			for (int i = 0; i < allConceptCodes.size(); i += labelBatchSize) {
+				int endIndex = Math.min(i + labelBatchSize, allConceptCodes.size());
+				List<String> batch = allConceptCodes.subList(i, endIndex);
+				
+				bulkAddLabelsToBatch(compositeLabel, batch, weblateClient, weblateLabel);
+				timerUtil.checkpoint("Completed CSV label batch");
+				done += batch.size();
+				updateProcessingTotal(translationSet, done, total);
+			}
+
+			// Second pass: apply translations using streaming
+			applyCsvTranslationsStreaming(translationSet, tempFilePath);
+			
+		} catch (IOException e) {
+			throw new ServiceExceptionWithStatusCode("Failed to process CSV file: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
 		} catch (Exception e) {
 			logger.error("Failed to apply CSV translations for set {}/{}/{}", 
 				translationSet.getCodesystem(), translationSet.getRefset(), translationSet.getLabel(), e);
 			// Continue with the set creation even if translations fail to apply
 			// The set will be created and translations can be applied later
+		} finally {
+			// Clean up temporary file
+			cleanupTempFile(tempFilePath);
 		}
 	}
 
-	private void applyCsvTranslations(WeblateTranslationSet translationSet, List<CsvTranslationRow> csvTranslations) 
-			throws ServiceException {
+	private void applyCsvTranslationsStreaming(WeblateTranslationSet translationSet, String tempFilePath) 
+			throws ServiceException, IOException {
 		
-		// Create a temporary CSV content for the translation service
-		StringBuilder csvContent = new StringBuilder();
-		csvContent.append("context,source,target");
-		if (csvTranslations.stream().anyMatch(row -> row.getComment() != null && !row.getComment().isEmpty())) {
-			csvContent.append(",note\n");
-		} else {
-			csvContent.append("\n");
-		}
+		// Create a temporary file for the translation service CSV format
+		Path translationCsvFile = Files.createTempFile("weblate-translation-", ".csv");
 		
-		for (CsvTranslationRow translation : csvTranslations) {
-			csvContent.append(String.format("%s,\"%s\",\"%s\"", 
-				translation.getConceptCode(),
-				translation.getConceptCode(), // Use concept code as source for now
-				translation.getTranslatedTerm().replace("\"", "\"\"")));
+		try {
+			boolean hasComments = false;
 			
-			if (translation.getComment() != null && !translation.getComment().isEmpty()) {
-				csvContent.append(",\"").append(translation.getComment().replace("\"", "\"\"")).append("\"");
+			// First pass: check if any row has comments to determine if we need the note column
+			try (CsvStreamReader csvReader = new CsvStreamReader(tempFilePath, 
+					translationSet.getConceptCodeColumn(), 
+					translationSet.getTranslatedTermColumn(), 
+					translationSet.getCommentColumn())) {
+				
+				List<CsvTranslationRow> sampleRows = csvReader.readBatch(100);
+				for (CsvTranslationRow row : sampleRows) {
+					if (row.getComment() != null && !row.getComment().isEmpty()) {
+						hasComments = true;
+						break;
+					}
+				}
 			}
-			csvContent.append("\n");
+			
+			// Second pass: write CSV in the format expected by the translation service
+			try (CsvStreamReader csvReader = new CsvStreamReader(tempFilePath, 
+					translationSet.getConceptCodeColumn(), 
+					translationSet.getTranslatedTermColumn(), 
+					translationSet.getCommentColumn());
+				 BufferedWriter writer = Files.newBufferedWriter(translationCsvFile, StandardCharsets.UTF_8)) {
+				
+				// Write header
+				if (hasComments) {
+					writer.write("context,source,target,note\n");
+				} else {
+					writer.write("context,source,target\n");
+				}
+				
+				// Write all rows
+				CsvTranslationRow row;
+				while ((row = csvReader.readNext()) != null) {
+					writeTranslationRow(writer, row, hasComments);
+				}
+			}
+			
+			// Apply translations using the existing translation service
+			try (InputStream csvInputStream = Files.newInputStream(translationCsvFile)) {
+				CodeSystem codeSystem = snowstormClientFactory.getClient().getCodeSystemOrThrow(translationSet.getCodesystem());
+				
+				ContentJob contentJob = new ContentJob();
+				contentJob.setRefsetId(translationSet.getRefset());
+				contentJob.setCodeSystemObject(codeSystem);
+				contentJob.addUpload(csvInputStream, "csv-translations.csv");
+				
+				translationService.uploadTranslationAsWeblateCSV(true, contentJob);
+				logger.info("Successfully applied CSV translations for set {}/{}/{}", 
+					translationSet.getCodesystem(), translationSet.getRefset(), translationSet.getLabel());
+			}
+			
+		} finally {
+			// Clean up the temporary translation CSV file
+			try {
+				Files.deleteIfExists(translationCsvFile);
+			} catch (IOException e) {
+				logger.warn("Failed to delete temporary translation CSV file: {}", translationCsvFile, e);
+			}
 		}
+	}
+
+	private void writeTranslationRow(BufferedWriter writer, CsvTranslationRow row, boolean hasComments) throws IOException {
+		// Escape quotes in CSV values
+		String conceptCode = row.getConceptCode();
+		String translatedTerm = row.getTranslatedTerm().replace("\"", "\"\"");
+		String comment = row.getComment();
 		
-		// Apply translations using the existing translation service
-		try (InputStream csvInputStream = new ByteArrayInputStream(csvContent.toString().getBytes(StandardCharsets.UTF_8))) {
-			CodeSystem codeSystem = snowstormClientFactory.getClient().getCodeSystemOrThrow(translationSet.getCodesystem());
-			
-			ContentJob contentJob = new ContentJob();
-			contentJob.setRefsetId(translationSet.getRefset());
-			contentJob.setCodeSystemObject(codeSystem);
-			contentJob.addUpload(csvInputStream, "csv-translations.csv");
-			
-			translationService.uploadTranslationAsWeblateCSV(true, contentJob);
-			logger.info("Successfully applied {} CSV translations for set {}/{}/{}", 
-				csvTranslations.size(), translationSet.getCodesystem(), translationSet.getRefset(), translationSet.getLabel());
-		} catch (IOException e) {
-			throw new ServiceException("Failed to create CSV stream for translations", e);
+		writer.write(String.format("%s,\"%s\",\"%s\"", conceptCode, conceptCode, translatedTerm));
+		
+		if (hasComments) {
+			if (comment != null && !comment.isEmpty()) {
+				writer.write(",\"" + comment.replace("\"", "\"\"") + "\"");
+			} else {
+				writer.write(",\"\"");
+			}
+		}
+		writer.write("\n");
+	}
+
+	private void cleanupTempFile(String tempFilePath) {
+		if (tempFilePath != null) {
+			try {
+				Files.deleteIfExists(Path.of(tempFilePath));
+				logger.info("Cleaned up temporary CSV file: {}", tempFilePath);
+			} catch (IOException e) {
+				logger.warn("Failed to delete temporary CSV file: {}", tempFilePath, e);
+			}
 		}
 	}
 

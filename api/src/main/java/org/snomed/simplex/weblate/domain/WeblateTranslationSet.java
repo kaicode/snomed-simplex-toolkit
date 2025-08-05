@@ -54,7 +54,16 @@ public final class WeblateTranslationSet {
 	private int translated;
 
 	@Transient
-	private List<CsvTranslationRow> csvTranslations;
+	private String csvTempFilePath;
+
+	@Transient
+	private String conceptCodeColumn;
+
+	@Transient
+	private String translatedTermColumn;
+
+	@Transient
+	private String commentColumn;
 
 	public WeblateTranslationSet(String codesystem, String refset, String name, String label,
 		String ecl, TranslationSubsetType subsetType, String selectionCodesystem) {
@@ -165,12 +174,36 @@ public final class WeblateTranslationSet {
 		return translated;
 	}
 
-	public List<CsvTranslationRow> getCsvTranslations() {
-		return csvTranslations;
+	public String getCsvTempFilePath() {
+		return csvTempFilePath;
 	}
 
-	public void setCsvTranslations(List<CsvTranslationRow> csvTranslations) {
-		this.csvTranslations = csvTranslations;
+	public void setCsvTempFilePath(String csvTempFilePath) {
+		this.csvTempFilePath = csvTempFilePath;
+	}
+
+	public String getConceptCodeColumn() {
+		return conceptCodeColumn;
+	}
+
+	public void setConceptCodeColumn(String conceptCodeColumn) {
+		this.conceptCodeColumn = conceptCodeColumn;
+	}
+
+	public String getTranslatedTermColumn() {
+		return translatedTermColumn;
+	}
+
+	public void setTranslatedTermColumn(String translatedTermColumn) {
+		this.translatedTermColumn = translatedTermColumn;
+	}
+
+	public String getCommentColumn() {
+		return commentColumn;
+	}
+
+	public void setCommentColumn(String commentColumn) {
+		this.commentColumn = commentColumn;
 	}
 
 	@Override
