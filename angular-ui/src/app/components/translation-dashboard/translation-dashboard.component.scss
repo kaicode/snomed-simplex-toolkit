@@ -407,3 +407,172 @@
         flex: 1 1 50% !important;
       }
     }
+
+    // CSV Upload Styles
+    .csv-upload-section {
+      width: 60%;
+      margin-bottom: 24px;
+      padding: 16px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      background-color: #fafafa;
+      
+      h4 {
+        margin-top: 0;
+        margin-bottom: 8px;
+        color: #1976d2;
+        font-weight: 500;
+      }
+      
+      .section-description {
+        font-size: 14px;
+        color: rgba(0, 0, 0, 0.6);
+        margin-bottom: 16px;
+        line-height: 1.4;
+      }
+      
+      .file-upload-container {
+        margin-bottom: 16px;
+        
+        .file-info {
+          display: flex;
+          align-items: center;
+          margin-top: 12px;
+          padding: 8px 12px;
+          background-color: #e3f2fd;
+          border-radius: 4px;
+          border: 1px solid #2196f3;
+          
+          mat-icon {
+            margin-right: 8px;
+            color: #1976d2;
+          }
+          
+          span {
+            flex: 1;
+            font-size: 14px;
+            color: #1976d2;
+          }
+        }
+      }
+    }
+    
+    .csv-mapping-section {
+      margin-top: 16px;
+      padding: 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background-color: #fff;
+      
+      h5 {
+        margin-top: 0;
+        margin-bottom: 8px;
+        color: #333;
+      }
+      
+      p {
+        font-size: 14px;
+        color: rgba(0, 0, 0, 0.6);
+        margin-bottom: 16px;
+      }
+      
+      .mapping-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 16px;
+        
+        mat-form-field {
+          width: 100%;
+        }
+      }
+      
+      .csv-preview {
+        h6 {
+          margin-bottom: 8px;
+          color: #333;
+          font-weight: 500;
+        }
+        
+        .csv-preview-table {
+          width: 100%;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          overflow: hidden;
+          
+          th.mat-header-cell {
+            position: relative;
+            font-weight: 500;
+            background-color: #f5f5f5;
+            
+            &.mapped-concept {
+              background-color: #e8f5e8;
+              color: #2e7d32;
+            }
+            
+            &.mapped-term {
+              background-color: #e3f2fd;
+              color: #1976d2;
+            }
+            
+            &.mapped-comment {
+              background-color: #fff3e0;
+              color: #f57c00;
+            }
+            
+            .mapping-icon {
+              position: absolute;
+              top: 4px;
+              right: 4px;
+              font-size: 16px;
+              width: 16px;
+              height: 16px;
+            }
+          }
+          
+          td.mat-cell {
+            &.mapped-concept {
+              background-color: #f1f8e9;
+            }
+            
+            &.mapped-term {
+              background-color: #e8f4fd;
+            }
+            
+            &.mapped-comment {
+              background-color: #fdf4e8;
+            }
+          }
+        }
+      }
+    }
+    
+    .disabled-section {
+      opacity: 0.5;
+      pointer-events: none;
+      
+      .disabled-text {
+        color: rgba(0, 0, 0, 0.38) !important;
+        font-style: italic;
+      }
+    }
+    
+    .disabled-message {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      color: rgba(0, 0, 0, 0.6);
+      font-size: 14px;
+      font-style: italic;
+      
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+        color: #757575;
+      }
+    }

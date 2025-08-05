@@ -6,6 +6,7 @@ import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
+import java.util.List;
 import java.util.Objects;
 
 @Document(indexName = "#{@indexNameProvider.indexName('weblate-set')}")
@@ -51,6 +52,9 @@ public final class WeblateTranslationSet {
 
 	@Transient
 	private int translated;
+
+	@Transient
+	private List<CsvTranslationRow> csvTranslations;
 
 	public WeblateTranslationSet(String codesystem, String refset, String name, String label,
 		String ecl, TranslationSubsetType subsetType, String selectionCodesystem) {
@@ -159,6 +163,14 @@ public final class WeblateTranslationSet {
 
 	public int getTranslated() {
 		return translated;
+	}
+
+	public List<CsvTranslationRow> getCsvTranslations() {
+		return csvTranslations;
+	}
+
+	public void setCsvTranslations(List<CsvTranslationRow> csvTranslations) {
+		this.csvTranslations = csvTranslations;
 	}
 
 	@Override

@@ -361,6 +361,11 @@ export class SimplexService {
     return this.http.post(`/api/${edition}/translations/${refsetId}/weblate-set`, translationSetData).pipe(catchError(this.handleError.bind(this)));
   }
 
+  public createTranslationSetFromCsv(edition: string, refsetId: string, formData: FormData): Observable<any> {
+    const apiUrl = `/api/${edition}/translations/${refsetId}/weblate-set/csv`;
+    return this.http.post(apiUrl, formData).pipe(catchError(this.handleError.bind(this)));
+  }
+
   public pullFromWeblate(edition: string, refsetId: string, label: string): Observable<any> {
     return this.http.post(`/api/${edition}/translations/${refsetId}/weblate-set/${label}/pull-content`, {}).pipe(catchError(this.handleError.bind(this)));
   }
