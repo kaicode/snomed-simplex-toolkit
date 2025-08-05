@@ -217,10 +217,117 @@
                     <mat-error *ngIf="form.get('label')?.hasError('required')">Label is required</mat-error>
                 </mat-form-field>
 
+                <!-- CSV Upload Section -->
+                <div class="csv-upload-section">
+                    <h4>Option 1: Upload Existing Translation CSV</h4>
+                    <p class="section-description">Upload a CSV file with existing translations. When a CSV is provided, ECL selection is not required.</p>
+                    
+                    <div class="file-upload-container">
+                        <input type="file" 
+                               #csvFileInput 
+                               accept=".csv" 
+                               (change)="onCsvFileSelected($event)" 
+                               style="display: none;">
+                        
+                        <button mat-stroked-button 
+                                color="primary" 
+                                (click)="csvFileInput.click()"
+                                [disabled]="processingCsv">
+                            <mat-icon>upload_file</mat-icon>
+                            Select CSV File
+                        </button>
+                        
+                        <div *ngIf="selectedCsvFile" class="file-info">
+                            <mat-icon>attach_file</mat-icon>
+                            <span>{{ selectedCsvFile.name }}</span>
+                            <button mat-icon-button (click)="removeCsvFile()" color="warn">
+                                <mat-icon>close</mat-icon>
+                            </button>
+                        </div>
+                        
+                        <mat-progress-bar *ngIf="processingCsv" mode="indeterminate"></mat-progress-bar>
+                    </div>
+
+                    <!-- CSV Column Mapping Dialog -->
+                    <div *ngIf="showCsvColumnMapping" class="csv-mapping-section">
+                        <h5>Map CSV Columns</h5>
+                        <p>Select which columns from your CSV correspond to the required data:</p>
+                        
+                        <!-- Column Mapping Controls -->
+                        <div class="mapping-controls">
+                            <mat-form-field>
+                                <mat-label>Concept Code Column (Required)</mat-label>
+                                <mat-select [(value)]="csvColumnMapping.conceptCode">
+                                    <mat-option value="">-- Select Column --</mat-option>
+                                    <mat-option *ngFor="let header of csvHeaders" [value]="header">
+                                        {{ header }}
+                                    </mat-option>
+                                </mat-select>
+                            </mat-form-field>
+
+                            <mat-form-field>
+                                <mat-label>Translated Term Column (Required)</mat-label>
+                                <mat-select [(value)]="csvColumnMapping.translatedTerm">
+                                    <mat-option value="">-- Select Column --</mat-option>
+                                    <mat-option *ngFor="let header of csvHeaders" [value]="header">
+                                        {{ header }}
+                                    </mat-option>
+                                </mat-select>
+                            </mat-form-field>
+
+                            <mat-form-field>
+                                <mat-label>Comment Column (Optional)</mat-label>
+                                <mat-select [(value)]="csvColumnMapping.comment">
+                                    <mat-option value="">-- Select Column --</mat-option>
+                                    <mat-option *ngFor="let header of csvHeaders" [value]="header">
+                                        {{ header }}
+                                    </mat-option>
+                                </mat-select>
+                            </mat-form-field>
+                        </div>
+
+                        <!-- CSV Preview -->
+                        <div class="csv-preview">
+                            <h6>CSV Preview (first 5 rows):</h6>
+                            <table mat-table [dataSource]="csvData" class="csv-preview-table">
+                                <ng-container *ngFor="let header of csvHeaders" [matColumnDef]="header">
+                                    <th mat-header-cell *matHeaderCellDef 
+                                        [ngClass]="{
+                                            'mapped-concept': header === csvColumnMapping.conceptCode,
+                                            'mapped-term': header === csvColumnMapping.translatedTerm,
+                                            'mapped-comment': header === csvColumnMapping.comment
+                                        }">
+                                        {{ header }}
+                                        <mat-icon *ngIf="header === csvColumnMapping.conceptCode" class="mapping-icon">code</mat-icon>
+                                        <mat-icon *ngIf="header === csvColumnMapping.translatedTerm" class="mapping-icon">translate</mat-icon>
+                                        <mat-icon *ngIf="header === csvColumnMapping.comment" class="mapping-icon">comment</mat-icon>
+                                    </th>
+                                    <td mat-cell *matCellDef="let row"
+                                        [ngClass]="{
+                                            'mapped-concept': header === csvColumnMapping.conceptCode,
+                                            'mapped-term': header === csvColumnMapping.translatedTerm,
+                                            'mapped-comment': header === csvColumnMapping.comment
+                                        }">
+                                        {{ row[header] }}
+                                    </td>
+                                </ng-container>
+                                
+                                <tr mat-header-row *matHeaderRowDef="csvHeaders"></tr>
+                                <tr mat-row *matRowDef="let row; columns: csvHeaders;"></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ECL Input Method Selection -->
-                <div class="ecl-input-section">
-                    <h4>ECL Input Method</h4>
-                    <mat-radio-group [(ngModel)]="eclInputMethod" (change)="onEclInputMethodChange()" [ngModelOptions]="{standalone: true}">
+                <div class="ecl-input-section" [ngClass]="{'disabled-section': selectedCsvFile}">
+                    <h4>Option 2: Select Concepts using ECL</h4>
+                    <p class="section-description" *ngIf="!selectedCsvFile">Define which concepts to include in the translation set using Expression Constraint Language (ECL).</p>
+                    <p class="section-description disabled-text" *ngIf="selectedCsvFile">ECL selection is disabled when a CSV file is uploaded.</p>
+                    <mat-radio-group [(ngModel)]="eclInputMethod" 
+                                     (change)="onEclInputMethodChange()" 
+                                     [ngModelOptions]="{standalone: true}"
+                                     [disabled]="selectedCsvFile">
                         <mat-radio-button value="manual">Manual ECL Input</mat-radio-button>
                         <mat-radio-button value="refset">Select from a Refset in this Extension</mat-radio-button>
                         <mat-radio-button value="derivative">Select from a SNOMED CT Derivative</mat-radio-button>
@@ -235,18 +342,20 @@
                 <!-- Manual ECL Field -->
                 <mat-form-field *ngIf="eclInputMethod === 'manual'">
                     <mat-label>ECL</mat-label>
-                    <input matInput formControlName="ecl">
-                    <button *ngIf="form.get('ecl')?.value" matSuffix 
+                    <input matInput formControlName="ecl" [disabled]="selectedCsvFile">
+                    <button *ngIf="form.get('ecl')?.value && !selectedCsvFile" matSuffix 
                         mat-icon-button aria-label="Clear" (click)="form.get('ecl')?.setValue('')">
                         <mat-icon>close</mat-icon>
                     </button>
-                    <mat-error *ngIf="form.get('ecl')?.hasError('required')">ECL is required</mat-error>
+                    <mat-error *ngIf="form.get('ecl')?.hasError('required') && !selectedCsvFile">ECL is required</mat-error>
                 </mat-form-field>
 
                 <!-- Refset Selection -->
                 <mat-form-field *ngIf="eclInputMethod === 'refset'">
                     <mat-label>Select Refset</mat-label>
-                    <mat-select (selectionChange)="onRefsetSelectionChange($event.value)" [value]="selectedRefsetCode" [disabled]="loadingRefsets">
+                    <mat-select (selectionChange)="onRefsetSelectionChange($event.value)" 
+                               [value]="selectedRefsetCode" 
+                               [disabled]="loadingRefsets || selectedCsvFile">
                         <mat-option *ngFor="let refset of refsets" [value]="refset.code">
                             {{ refset.display }} ({{ refset.code }})
                         </mat-option>
@@ -255,13 +364,15 @@
                         </mat-option>
                     </mat-select>
                     <mat-spinner *ngIf="loadingRefsets" matSuffix [diameter]="20"></mat-spinner>
-                    <mat-error *ngIf="form.get('ecl')?.hasError('required')">Refset selection is required</mat-error>
+                    <mat-error *ngIf="form.get('ecl')?.hasError('required') && !selectedCsvFile">Refset selection is required</mat-error>
                 </mat-form-field>
 
                 <!-- Derivative Selection -->
                 <mat-form-field *ngIf="eclInputMethod === 'derivative'">
                     <mat-label>Select Derivative</mat-label>
-                    <mat-select (selectionChange)="onDerivativeSelectionChange($event.value)" [value]="selectedDerivativeCode" [disabled]="loadingDerivatives">
+                    <mat-select (selectionChange)="onDerivativeSelectionChange($event.value)" 
+                               [value]="selectedDerivativeCode" 
+                               [disabled]="loadingDerivatives || selectedCsvFile">
                         <mat-option *ngFor="let derivative of derivatives" [value]="derivative.code">
                             {{ derivative.display }} ({{ derivative.code }}){{ derivative.memberCount ? ' - ' + derivative.memberCount + ' members' : '' }}
                         </mat-option>
@@ -270,7 +381,7 @@
                         </mat-option>
                     </mat-select>
                     <mat-spinner *ngIf="loadingDerivatives" matSuffix [diameter]="20"></mat-spinner>
-                    <mat-error *ngIf="form.get('ecl')?.hasError('required')">Derivative selection is required</mat-error>
+                    <mat-error *ngIf="form.get('ecl')?.hasError('required') && !selectedCsvFile">Derivative selection is required</mat-error>
                 </mat-form-field>
 
                 <!-- Subtype Selection -->
@@ -281,17 +392,29 @@
                         <span>Branch path not available. Please ensure an edition is selected.</span>
                     </div>
                     <app-autocomplete-binding
-                        *ngIf="selectedEdition?.branchPath"
+                        *ngIf="selectedEdition?.branchPath && !selectedCsvFile"
                         [binding]="{ecl: '<< 138875005', branchPath: selectedEdition.branchPath}"
                         [term]="selectedSubtype?.display || ''"
                         (selectionChange)="onSubtypeSelectionChange($event)">
                     </app-autocomplete-binding>
+                    <div *ngIf="selectedCsvFile" class="disabled-message">
+                        <mat-icon>info</mat-icon>
+                        <span>Subtype selection is disabled when CSV is uploaded.</span>
+                    </div>
                 </div>
             </form>
             <div>
                 <button mat-flat-button (click)="mode = 'view'" *ngIf="!saving">Cancel</button>
-                <button mat-flat-button color="accent" (click)="submit()" *ngIf="!saving" [disabled]="form.invalid">Create</button>
-                <p *ngIf="saving" class="saving"><mat-spinner [diameter]="20"></mat-spinner>&nbsp;&nbsp;Creating set...</p>
+                <button mat-flat-button color="accent" 
+                        (click)="selectedCsvFile ? submitWithCsv() : submit()" 
+                        *ngIf="!saving" 
+                        [disabled]="selectedCsvFile ? (!isCsvColumnMappingValid() || form.get('translation')?.invalid || form.get('name')?.invalid) : form.invalid">
+                    {{ selectedCsvFile ? 'Create from CSV' : 'Create' }}
+                </button>
+                <p *ngIf="saving" class="saving">
+                    <mat-spinner [diameter]="20"></mat-spinner>&nbsp;&nbsp;
+                    {{ selectedCsvFile ? 'Creating set from CSV...' : 'Creating set...' }}
+                </p>
             </div>
         </div>
     </div>

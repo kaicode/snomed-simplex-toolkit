@@ -46,6 +46,18 @@ export class TranslationDashboardComponent {
   derivatives: any[] = [];
   loadingDerivatives = false;
   derivativesLoaded = false; // Cache flag for derivatives
+
+  // CSV upload properties
+  selectedCsvFile: File | null = null;
+  csvData: any[] = [];
+  csvHeaders: string[] = [];
+  showCsvColumnMapping = false;
+  csvColumnMapping = {
+    conceptCode: '',
+    translatedTerm: '',
+    comment: ''
+  };
+  processingCsv = false;
   
   form: FormGroup = this.fb.group({
     translation: ['', Validators.required],
@@ -314,6 +326,8 @@ export class TranslationDashboardComponent {
       // Reset cache flags to allow fresh data loading
       this.refsetsLoaded = false;
       this.derivativesLoaded = false;
+      // Reset CSV upload properties
+      this.removeCsvFile();
     }
   }
 
@@ -688,5 +702,195 @@ export class TranslationDashboardComponent {
         }
       );
     }
+  }
+
+  // CSV upload methods
+  onCsvFileSelected(event: any) {
+    const file = event.target.files[0];
+    if (file && file.type === 'text/csv') {
+      this.selectedCsvFile = file;
+      this.parseCsvFile(file);
+    } else {
+      this.snackBar.open('Please select a valid CSV file', 'Dismiss', {
+        duration: 5000
+      });
+      this.selectedCsvFile = null;
+      this.csvData = [];
+      this.csvHeaders = [];
+      this.showCsvColumnMapping = false;
+    }
+  }
+
+  private parseCsvFile(file: File) {
+    this.processingCsv = true;
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const csvText = e.target?.result as string;
+        const lines = csvText.split('\n').filter(line => line.trim());
+        
+        if (lines.length < 2) {
+          throw new Error('CSV file must have at least a header row and one data row');
+        }
+
+        // Parse headers
+        this.csvHeaders = this.parseCsvLine(lines[0]);
+        
+        // Parse data rows (sample first 5 for preview)
+        this.csvData = lines.slice(1, Math.min(6, lines.length))
+          .map(line => this.parseCsvLine(line))
+          .map(row => {
+            const obj: any = {};
+            this.csvHeaders.forEach((header, index) => {
+              obj[header] = row[index] || '';
+            });
+            return obj;
+          });
+
+        this.showCsvColumnMapping = true;
+        this.processingCsv = false;
+        
+        // Clear ECL requirement when CSV is uploaded
+        this.form.get('ecl')?.clearValidators();
+        this.form.get('ecl')?.updateValueAndValidity();
+        
+      } catch (error) {
+        console.error('Error parsing CSV:', error);
+        this.snackBar.open('Error parsing CSV file: ' + (error as Error).message, 'Dismiss', {
+          duration: 8000
+        });
+        this.processingCsv = false;
+        this.selectedCsvFile = null;
+        this.csvData = [];
+        this.csvHeaders = [];
+        this.showCsvColumnMapping = false;
+      }
+    };
+
+    reader.onerror = () => {
+      this.snackBar.open('Error reading CSV file', 'Dismiss', {
+        duration: 5000
+      });
+      this.processingCsv = false;
+    };
+
+    reader.readAsText(file);
+  }
+
+  private parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Handle escaped quotes
+          current += '"';
+          i++; // Skip next quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    result.push(current.trim());
+    return result;
+  }
+
+  removeCsvFile() {
+    this.selectedCsvFile = null;
+    this.csvData = [];
+    this.csvHeaders = [];
+    this.showCsvColumnMapping = false;
+    this.csvColumnMapping = {
+      conceptCode: '',
+      translatedTerm: '',
+      comment: ''
+    };
+    
+    // Restore ECL requirement
+    this.form.get('ecl')?.setValidators([Validators.required]);
+    this.form.get('ecl')?.updateValueAndValidity();
+  }
+
+  isCsvColumnMappingValid(): boolean {
+    return !!(this.csvColumnMapping.conceptCode && this.csvColumnMapping.translatedTerm);
+  }
+
+  submitWithCsv() {
+    if (!this.selectedCsvFile || !this.isCsvColumnMappingValid()) {
+      this.snackBar.open('Please select a CSV file and map required columns', 'Dismiss', {
+        duration: 5000
+      });
+      return;
+    }
+
+    if (this.form.get('translation')?.invalid || this.form.get('name')?.invalid) {
+      this.snackBar.open('Please fill in all required fields', 'Dismiss', {
+        duration: 5000
+      });
+      return;
+    }
+
+    this.saving = true;
+    const formData = new FormData();
+    
+    // Add form fields
+    formData.append('name', this.form.get('name')?.value);
+    formData.append('label', this.form.get('label')?.value);
+    formData.append('translation', this.form.get('translation')?.value);
+    
+    // Add CSV file
+    formData.append('csvFile', this.selectedCsvFile);
+    
+    // Add column mapping
+    formData.append('conceptCodeColumn', this.csvColumnMapping.conceptCode);
+    formData.append('translatedTermColumn', this.csvColumnMapping.translatedTerm);
+    if (this.csvColumnMapping.comment) {
+      formData.append('commentColumn', this.csvColumnMapping.comment);
+    }
+
+    // Call the new CSV upload service method
+    this.simplexService.createTranslationSetFromCsv(
+      this.selectedEdition.shortName,
+      this.form.get('translation')?.value,
+      formData
+    ).subscribe(
+      () => {
+        this.snackBar.open('Translation set is being created from CSV', 'Dismiss', {
+          duration: 5000
+        });
+        this.form.reset();
+        this.removeCsvFile();
+        this.mode = 'view';
+        this.saving = false;
+        
+        // Reload the translation sets to show the new one
+        this.getTranslationSets();
+      },
+      (error) => {
+        console.error(error);
+        
+        // Extract error message from API response
+        let errorMessage = 'Failed to create translation set from CSV';
+        if (error.error && error.error.message) {
+          errorMessage = `${errorMessage}: ${error.error.message}`;
+        }
+        
+        this.snackBar.open(errorMessage, 'Dismiss', {
+          duration: 8000
+        });
+        this.saving = false;
+      }
+    );
   }
 }

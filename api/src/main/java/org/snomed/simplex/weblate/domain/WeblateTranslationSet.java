@@ -6,6 +6,7 @@ import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 
+import java.util.List;
 import java.util.Objects;
 
 @Document(indexName = "#{@indexNameProvider.indexName('weblate-set')}")
@@ -51,6 +52,18 @@ public final class WeblateTranslationSet {
 
 	@Transient
 	private int translated;
+
+	@Transient
+	private String csvTempFilePath;
+
+	@Transient
+	private String conceptCodeColumn;
+
+	@Transient
+	private String translatedTermColumn;
+
+	@Transient
+	private String commentColumn;
 
 	public WeblateTranslationSet(String codesystem, String refset, String name, String label,
 		String ecl, TranslationSubsetType subsetType, String selectionCodesystem) {
@@ -159,6 +172,38 @@ public final class WeblateTranslationSet {
 
 	public int getTranslated() {
 		return translated;
+	}
+
+	public String getCsvTempFilePath() {
+		return csvTempFilePath;
+	}
+
+	public void setCsvTempFilePath(String csvTempFilePath) {
+		this.csvTempFilePath = csvTempFilePath;
+	}
+
+	public String getConceptCodeColumn() {
+		return conceptCodeColumn;
+	}
+
+	public void setConceptCodeColumn(String conceptCodeColumn) {
+		this.conceptCodeColumn = conceptCodeColumn;
+	}
+
+	public String getTranslatedTermColumn() {
+		return translatedTermColumn;
+	}
+
+	public void setTranslatedTermColumn(String translatedTermColumn) {
+		this.translatedTermColumn = translatedTermColumn;
+	}
+
+	public String getCommentColumn() {
+		return commentColumn;
+	}
+
+	public void setCommentColumn(String commentColumn) {
+		this.commentColumn = commentColumn;
 	}
 
 	@Override

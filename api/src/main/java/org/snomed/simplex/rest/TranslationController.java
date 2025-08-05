@@ -158,6 +158,60 @@ public class TranslationController {
 		return weblateSetService.createSet(set);
 	}
 
+	@PostMapping(value = "{codeSystem}/translations/{refsetId}/weblate-set/csv", consumes = "multipart/form-data")
+	@Operation(summary = "Create a new Weblate translation set from CSV file.",
+			description = "Creates a new translation set in Weblate from an uploaded CSV file containing existing translations. The CSV file should contain columns for concept codes, translated terms, and optionally comments.")
+	@PreAuthorize("hasPermission('AUTHOR', #codeSystem)")
+	public WeblateTranslationSet createWeblateSetFromCsv(
+			@PathVariable String codeSystem, 
+			@PathVariable String refsetId,
+			@RequestParam("name") String name,
+			@RequestParam("label") String label,
+			@RequestParam("csvFile") MultipartFile csvFile,
+			@RequestParam("conceptCodeColumn") String conceptCodeColumn,
+			@RequestParam("translatedTermColumn") String translatedTermColumn,
+			@RequestParam(value = "commentColumn", required = false) String commentColumn) throws ServiceException {
+
+		// Validate that label is all lowercase and URL compatible
+		if (label == null || label.trim().isEmpty()) {
+			throw new ServiceExceptionWithStatusCode("Label parameter cannot be null or empty.", HttpStatus.BAD_REQUEST);
+		}
+
+		if (!label.equals(label.toLowerCase())) {
+			throw new ServiceExceptionWithStatusCode("Label parameter must be all lowercase.", HttpStatus.BAD_REQUEST);
+		}
+
+		// Check for URL compatibility - only allow lowercase letters, numbers, hyphens, and underscores
+		if (!label.matches("^[a-z0-9_-]+$")) {
+			throw new ServiceExceptionWithStatusCode("Label parameter must contain only lowercase letters, numbers, hyphens, and underscores.", HttpStatus.BAD_REQUEST);
+		}
+
+		// Validate CSV file
+		if (csvFile == null || csvFile.isEmpty()) {
+			throw new ServiceExceptionWithStatusCode("CSV file is required.", HttpStatus.BAD_REQUEST);
+		}
+
+		if (!csvFile.getOriginalFilename().toLowerCase().endsWith(".csv")) {
+			throw new ServiceExceptionWithStatusCode("File must be a CSV file.", HttpStatus.BAD_REQUEST);
+		}
+
+		// Validate required column mappings
+		if (conceptCodeColumn == null || conceptCodeColumn.trim().isEmpty()) {
+			throw new ServiceExceptionWithStatusCode("Concept code column mapping is required.", HttpStatus.BAD_REQUEST);
+		}
+
+		if (translatedTermColumn == null || translatedTermColumn.trim().isEmpty()) {
+			throw new ServiceExceptionWithStatusCode("Translated term column mapping is required.", HttpStatus.BAD_REQUEST);
+		}
+
+		try {
+			return weblateSetService.createSetFromCsv(codeSystem, refsetId, name, label, 
+				csvFile.getInputStream(), conceptCodeColumn, translatedTermColumn, commentColumn);
+		} catch (IOException e) {
+			throw new ServiceExceptionWithStatusCode("Failed to read CSV file: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+		}
+	}
+
 	@GetMapping("{codeSystem}/translations/{refsetId}/weblate-set/{label}")
 	@PreAuthorize("hasPermission('AUTHOR', #codeSystem)")
 	public WeblateTranslationSet getWeblateSet(@PathVariable String codeSystem, @PathVariable String refsetId, @PathVariable String label) throws ServiceExceptionWithStatusCode {
